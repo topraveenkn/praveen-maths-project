@@ -1,5 +1,5 @@
 """
-Number Functions GUI Application
+Number Functions Generator Application
 
 A comprehensive GUI application that computes and visualizes:
 - Fibonacci numbers up to a specified limit
@@ -469,7 +469,7 @@ def main():
     # Add a simple About menu with an About dialog.
     help_menu = tk.Menu(menu_bar, tearoff=0, bg="#2d2d2d", fg="#ffffff", activebackground="#404040", activeforeground="#ffffff")
     help_menu.add_command(label="About", command=lambda: messagebox.showinfo(
-        "About", "This GUI computes Fibonacci numbers, prime numbers up to n, and the Riemann zeta function for a given value n.\n\nAuthor: Praveen KN with help from coPilot"))
+        "About", "This GUI computes Fibonacci numbers, prime numbers up to n, and the Riemann zeta function for a given value. The software is for educational purpose only n.\n\nAuthor: Praveen KN with help from coPilot"))
     menu_bar.add_cascade(label="About", menu=help_menu)
     root.config(menu=menu_bar)
 

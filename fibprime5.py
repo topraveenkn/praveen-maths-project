@@ -17,7 +17,12 @@ from mpl_toolkits.mplot3d import Axes3D # Required for 3D projection
 def complex_gamma(z):
     """
     Computes the Gamma function for complex numbers using the Lanczos approximation.
-    This is essential for the Zeta functional equation when Re(s) <= 0.
+    
+    Args:
+        z (complex): The complex number input.
+        
+    Returns:
+        complex: The approximated Gamma value.
     """
     p = [
         0.99999999999980993, 676.5203681218851, -1259.13921672240,
@@ -37,6 +42,15 @@ def complex_gamma(z):
     return math.sqrt(2 * math.pi) * t**(z + 0.5) * cmath.exp(-t) * x
 
 def generate_fibonacci_list(n):
+    """
+    Generates a list of Fibonacci numbers up to n elements.
+    
+    Args:
+        n (int): Number of elements to generate.
+        
+    Returns:
+        list: A list containing the Fibonacci sequence.
+    """
     if n <= 0: return []
     seq = []
     a, b = 0, 1
@@ -46,6 +60,15 @@ def generate_fibonacci_list(n):
     return seq
 
 def generate_primes_list(n):
+    """
+    Generates all prime numbers up to a given limit using the Sieve of Eratosthenes.
+    
+    Args:
+        n (int): The upper limit for prime generation.
+        
+    Returns:
+        list: A list of all prime numbers found up to n.
+    """
     if n < 2: return []
     sieve = [True] * (n + 1)
     for p in range(2, int(n**0.5) + 1):
@@ -55,6 +78,17 @@ def generate_primes_list(n):
     return [p for p in range(2, n + 1) if sieve[p]]
 
 def calculate_riemann_zeta(s, terms=1000):
+    """
+    Computes the Riemann Zeta function ζ(s) for complex numbers.
+    Handles the Dirichlet series, Eta series, and the Functional Equation.
+    
+    Args:
+        s (complex): The input complex number.
+        terms (int): Accuracy limit for summation.
+        
+    Returns:
+        tuple: (result_value, description_string, convergence_flag)
+    """
     if s == 1 + 0j:
         return None, None, False 
 
@@ -101,6 +135,10 @@ def calculate_riemann_zeta(s, terms=1000):
 # =============================================================================
 
 class FibPrimeApp:
+    """
+    Main application class for the Pro Fibonacci, Prime & Zeta Visualizer.
+    Handles UI state, navigation and coordination between math logic and plots.
+    """
     def __init__(self, root):
         self.root = root
         self.root.title("Pro Fibonacci, Prime & Zeta Visualizer")
@@ -123,7 +161,17 @@ class FibPrimeApp:
         }
 
         self.center_window()
+        self.setup_navigation()
+        
+        self.content_frame = tk.Frame(self.root, bg=self.colors["bg_light"], 
+                                      padx=30, pady=30, highlightthickness=1, 
+                                      highlightbackground="#dcdde1")
+        self.content_frame.pack(expand=True, fill="both", padx=40, pady=40)
 
+        self.show_fib_screen()
+
+    def setup_navigation(self):
+        """Initializes the top navigation bar and its buttons."""
         self.nav_bar = tk.Frame(self.root, bg=self.colors["primary"], pady=15)
         self.nav_bar.pack(fill="x")
 
@@ -152,14 +200,8 @@ class FibPrimeApp:
                                   font=("Segoe UI", 10, "bold"), padx=15, cursor="hand2")
         self.btn_exit.pack(side="right", padx=15)
 
-        self.content_frame = tk.Frame(self.root, bg=self.colors["bg_light"], 
-                                      padx=30, pady=30, highlightthickness=1, 
-                                      highlightbackground="#dcdde1")
-        self.content_frame.pack(expand=True, fill="both", padx=40, pady=40)
-
-        self.show_fib_screen()
-
     def center_window(self):
+        """Centers the main application window on the screen."""
         self.root.update_idletasks()
         width, height = 800, 700
         x = (self.root.winfo_screenwidth() // 2) - (width // 2)
@@ -167,10 +209,12 @@ class FibPrimeApp:
         self.root.geometry(f'{width}x{height}+{x}+{y}')
 
     def clear_frame(self):
+        """Removes all widgets from the content frame to allow screen switching."""
         for widget in self.content_frame.winfo_children():
             widget.destroy()
 
     def create_input_field(self, label_text):
+        """Helper to create a label and an entry field."""
         tk.Label(self.content_frame, text=label_text, font=("Segoe UI", 11), 
                  bg=self.colors["bg_light"], fg=self.colors["text_dark"]).pack(pady=(10, 5))
         entry = ttk.Entry(self.content_frame, justify='center', font=("Segoe UI", 12))
@@ -178,6 +222,7 @@ class FibPrimeApp:
         return entry
 
     def create_result_display(self):
+        """Creates a scrollable text area for displaying generated results."""
         container = tk.Frame(self.content_frame, bg=self.colors["bg_light"])
         container.pack(pady=20, expand=True, fill="both")
         v_scroll = tk.Scrollbar(container, orient="vertical")
@@ -190,7 +235,27 @@ class FibPrimeApp:
         text_area.config(state="disabled")
         return text_area
 
+    def format_indexed_data(self, data):
+        """
+        Architectural Helper: Formats a list of numbers into indexed strings
+        arranged in rows of 10.
+        
+        Example: [0, 1, 1] -> "1) 0, 2) 1, 3) 1"
+        """
+        # 1. Associate each number with its 1-based index
+        indexed_list = [f"{i+1}) {val}" for i, val in enumerate(data)]
+        
+        # 2. Chunk the list into groups of 10
+        rows = []
+        for i in range(0, len(indexed_list), 10):
+            chunk = indexed_list[i : i + 10]
+            rows.append(", ".join(chunk))
+            
+        # 3. Join rows with newlines
+        return "\n".join(rows)
+
     def show_fib_screen(self):
+        """Sets up the UI for the Fibonacci generator."""
         self.clear_frame()
         tk.Label(self.content_frame, text="Fibonacci Sequence", font=("Segoe UI", 16, "bold"), 
                  bg=self.colors["bg_light"], fg=self.colors["primary"]).pack(pady=(0, 20))
@@ -213,6 +278,7 @@ class FibPrimeApp:
         self.result_label = self.create_result_display()
 
     def show_prime_screen(self):
+        """Sets up the UI for the Prime number generator."""
         self.clear_frame()
         tk.Label(self.content_frame, text="Prime Number Generator", font=("Segoe UI", 16, "bold"), 
                  bg=self.colors["bg_light"], fg=self.colors["primary"]).pack(pady=(0, 20))
@@ -235,6 +301,7 @@ class FibPrimeApp:
         self.result_label = self.create_result_display()
 
     def show_zeta_screen(self):
+        """Sets up the UI for the Riemann Zeta calculator."""
         self.clear_frame()
         tk.Label(self.content_frame, text="Riemann Zeta Function", font=("Segoe UI", 16, "bold"), 
                  bg=self.colors["bg_light"], fg=self.colors["primary"]).pack(pady=(0, 20))
@@ -246,14 +313,12 @@ class FibPrimeApp:
                   font=("Segoe UI", 10, "bold"), relief="flat", padx=15, cursor="hand2",
                   command=lambda: self.start_thread(self.exec_zeta)).pack(side="left", padx=5)
         
-        # Renamed to Visualize 2D
         self.btn_zeta_plot_2d = tk.Button(btn_frame, text="Visualize 2D", bg=self.colors["secondary"], 
                                           fg="white", font=("Segoe UI", 10, "bold"), relief="flat",
                                           padx=15, cursor="hand2", state="disabled",
                                           command=lambda: self.plot_zeta_complex())
         self.btn_zeta_plot_2d.pack(side="left", padx=5)
 
-        # New Visualize 3D Button
         self.btn_zeta_plot_3d = tk.Button(btn_frame, text="Visualize 3D", bg=self.colors["secondary"], 
                                           fg="white", font=("Segoe UI", 10, "bold"), relief="flat",
                                           padx=15, cursor="hand2", state="disabled",
@@ -263,6 +328,7 @@ class FibPrimeApp:
         self.result_label = self.create_result_display()
 
     def export_to_csv(self, prefix, headers):
+        """Exports current sequence data to a CSV file in the user's Downloads folder."""
         if not self.current_data: return
         downloads_folder = os.path.join(os.path.expanduser("~"), "Downloads")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -279,16 +345,21 @@ class FibPrimeApp:
             messagebox.showerror("Export Error", f"Could not save file: {e}")
 
     def start_thread(self, target_func):
+        """Executes heavy computations in a separate daemon thread to prevent UI freezing."""
         threading.Thread(target=target_func, daemon=True).start()
 
     def exec_fib(self):
+        """Core execution logic for Fibonacci: input validation -> generation -> formatting."""
         try:
             n = int(self.entry_n.get())
             if n > 10000:
                 messagebox.showwarning("Limit", "Please enter N ≤ 10,000.")
                 return
             self.current_data = generate_fibonacci_list(n)
-            result_text = ", ".join(map(str, self.current_data))
+            
+            # Apply the enhanced architectural formatting
+            result_text = self.format_indexed_data(self.current_data)
+            
             self.root.after(0, self.display_result, result_text)
             self.root.after(0, lambda: self.btn_plot.config(state="normal"))
             self.root.after(0, lambda: self.btn_save.config(state="normal"))
@@ -296,13 +367,17 @@ class FibPrimeApp:
             self.root.after(0, lambda: messagebox.showerror("Error", "Invalid integer."))
 
     def exec_prime(self):
+        """Core execution logic for Primes: input validation -> generation -> formatting."""
         try:
             n = int(self.entry_n.get())
             if n > 10000000:
                 messagebox.showwarning("Limit", "Please enter N ≤ 10,000,000.")
                 return
             self.current_data = generate_primes_list(n)
-            result_text = ", ".join(map(str, self.current_data))
+            
+            # Apply the enhanced architectural formatting
+            result_text = self.format_indexed_data(self.current_data)
+            
             self.root.after(0, self.display_result, result_text)
             self.root.after(0, lambda: self.btn_plot.config(state="normal"))
             self.root.after(0, lambda: self.btn_save.config(state="normal"))
@@ -310,6 +385,7 @@ class FibPrimeApp:
             self.root.after(0, lambda: messagebox.showerror("Error", "Invalid integer."))
 
     def exec_zeta(self):
+        """Core execution logic for Riemann Zeta calculations."""
         try:
             raw_input = self.entry_n.get()
             s_strings = [x.strip() for x in raw_input.replace(';', ',').split(',')]
@@ -341,7 +417,6 @@ class FibPrimeApp:
             final_text = "\n".join(all_results)
             self.root.after(0, self.display_result, final_text)
             
-            # Update both buttons
             status = "normal" if self.zeta_pairs else "disabled"
             self.root.after(0, lambda: self.btn_zeta_plot_2d.config(state=status))
             self.root.after(0, lambda: self.btn_zeta_plot_3d.config(state=status))
@@ -350,6 +425,7 @@ class FibPrimeApp:
             self.root.after(0, lambda: messagebox.showerror("Error", f"An unexpected error occurred: {e}"))
 
     def display_result(self, text):
+        """Updates the text area with the final calculated result."""
         self.result_label.config(state="normal") 
         self.result_label.delete("1.0", tk.END)
         self.result_label.insert(tk.END, text)
@@ -360,6 +436,7 @@ class FibPrimeApp:
     # =========================================================================
 
     def plot_data(self, mode):
+        """Plots Fibonacci or Prime distributions with interactive tooltips."""
         if not self.current_data: return
         plt.style.use('seaborn-v0_8-muted')
         fig, ax = plt.subplots(figsize=(11, 7))
@@ -416,7 +493,7 @@ class FibPrimeApp:
         plt.show()
 
     def plot_zeta_complex(self):
-        """Plots s and zeta(s) on the complex plane with precise Nearest-Neighbor tooltips."""
+        """Plots s and zeta(s) on the complex plane."""
         if not self.zeta_pairs: return
         
         plt.style.use('seaborn-v0_8-muted')
@@ -505,17 +582,14 @@ class FibPrimeApp:
         fig = plt.figure(figsize=(12, 8))
         ax = fig.add_subplot(111, projection='3d')
         
-        # X: Real part of s, Y: Imaginary part of s, Z: Magnitude |zeta(s)|
         s_reals = [p[0].real for p in self.zeta_pairs]
         s_imags = [p[0].imag for p in self.zeta_pairs]
         z_mags = [abs(p[1]) for p in self.zeta_pairs]
         
-        # Create a 3D scatter plot
         scatter = ax.scatter(s_reals, s_imags, z_mags, 
                             c=z_mags, cmap='viridis', 
                             s=60, edgecolors='k', alpha=0.8)
         
-        # Add a color bar to show magnitude intensity
         fig.colorbar(scatter, ax=ax, label=r'Magnitude $|\zeta(s)|$')
         
         ax.set_title("3D Visualization: Magnitude of Riemann Zeta Function", fontsize=14, fontweight='bold')
@@ -524,14 +598,13 @@ class FibPrimeApp:
         ax.set_zlabel(r"$|\zeta(s)|$", fontsize=12)
         
         ax.grid(True, linestyle='--', alpha=0.5)
-        
-        # Set a nice starting viewing angle
         ax.view_init(elev=30, azim=45)
         
         plt.tight_layout()
         plt.show()
 
     def show_about(self):
+        """Displays the information dialog about the application."""
         about_text = (
             "Pro Fibonacci, Prime & Zeta Visualizer\n"
             "--------------------------------------------------\n\n"
@@ -555,3 +628,4 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = FibPrimeApp(root)
     root.mainloop()
+

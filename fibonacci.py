@@ -1,617 +1,690 @@
 """
-Number Functions Generator Application
-
-A comprehensive GUI application that computes and visualizes:
-- Fibonacci numbers up to a specified limit
-- Prime numbers using the Sieve of Eratosthenes algorithm
-- Reimann Zeta function values for a range of inputs with mathematical series expansions
-
-Author: Praveen KN with help from coPilot
-Date: May 9, 2026
+Pro Fibonacci, Prime & Zeta Visualizer.
+This module provides a GUI application to calculate and visualize 
+Fibonacci sequences, Prime numbers, and the Riemann Zeta function.
 """
 
-import tkinter as tk
-from tkinter import messagebox, simpledialog, scrolledtext
+import csv
+import cmath
 import math
-import sys
-import warnings
+import os
+import threading
+from datetime import datetime
+from typing import List, Tuple, Optional, Union
 
-# Suppress deprecation warnings
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-warnings.filterwarnings("ignore", category=UserWarning)
+import matplotlib.pyplot as plt
+import numpy as np
+import tkinter as tk
+from tkinter import messagebox, ttk
 
-import ctypes
-try:
-    from ctypes import windll
-except (ImportError, AttributeError):
-    windll = None
+# =============================================================================
+# 1. CORE MATHEMATICAL LOGIC
+# =============================================================================
 
-# Import matplotlib for visualization; 
-try:
-    import matplotlib.pyplot as plt
-    # Suppress matplotlib warnings
-    warnings.filterwarnings("ignore", category=UserWarning, module="matplotlib")
-except ImportError:
-    plt = None
+def complex_gamma(z: complex) -> complex:
+    """
+    Compute the Gamma function for complex numbers using Lanczos approximation.
+
+    Args:
+        z (complex): The complex number input.
+
+    Returns:
+        complex: The approximated Gamma value.
+    """
+    # Lanczos coefficients
+    p = [
+        0.99999999999980993, 676.5203681218851, -1259.13921672240,
+        771.3234287768164, -176.6150291621406, 12.50734024154800,
+        -0.13857109526572012, 9.9843695780195716e-6, 1.5056327196869211e-7
+    ]
+    g = 7
+    if z.real < 0.5:
+        return math.pi / (cmath.sin(math.pi * z) * complex_gamma(1 - z))
+
+    z -= 1
+    x = p[0]
+    for i in range(1, len(p)):
+        x += p[i] / (z + i)
+
+    t = z + g + 0.5
+    return math.sqrt(2 * math.pi) * t**(z + 0.5) * cmath.exp(-t) * x
 
 
-def compute_fibonacci(n):
-    """Compute Fibonacci numbers up to the provided limit n."""
-    if n < 1:
+def generate_fibonacci_list(n: int) -> List[int]:
+    """
+    Generate a list of Fibonacci numbers up to n elements.
+
+    Args:
+        n (int): Number of elements to generate.
+
+    Returns:
+        List[int]: A list containing the Fibonacci sequence.
+    """
+    if n <= 0:
         return []
-
-    # Start the sequence with the first two Fibonacci numbers.
-    sequence = [1, 1]
-
-    # Continue generating numbers until the next one would exceed n.
-    while sequence[-1] + sequence[-2] <= n:
-        sequence.append(sequence[-1] + sequence[-2])
-    return sequence
+    seq = []
+    a, b = 0, 1
+    for _ in range(n):
+        seq.append(a)
+        a, b = b, a + b
+    return seq
 
 
-def compute_primes(n):
-    """Return all prime numbers from 2 through n using the Sieve of Eratosthenes."""
+def generate_primes_list(n: int) -> List[int]:
+    """
+    Generate prime numbers up to a given limit using the Sieve of Eratosthenes.
+
+    Args:
+        n (int): The upper limit for prime generation.
+
+    Returns:
+        List[int]: A list of all prime numbers found up to n.
+    """
     if n < 2:
         return []
-
     sieve = [True] * (n + 1)
-    sieve[0] = sieve[1] = False
-
-    # Only test divisors up to the integer square root of n.
-    for i in range(2, int(math.isqrt(n)) + 1):
-        if sieve[i]:
-            for j in range(i * i, n + 1, i):
-                sieve[j] = False
-
-    return [i for i, prime in enumerate(sieve) if prime]
+    for p in range(2, int(n**0.5) + 1):
+        if sieve[p]:
+            for i in range(p * p, n + 1, p):
+                sieve[i] = False
+    return [p for p in range(2, n + 1) if sieve[p]]
 
 
-def compute_zeta(s, terms=200000):
-    """Approximate the Reimann zeta function ζ(s) by summing the series 1/k^s."""
-    if isinstance(s, complex):
-        if s.real <= 1:
-            raise ValueError("The Reimann zeta function converges only for Re(s) > 1.")
+def calculate_riemann_zeta(
+    s: complex, 
+    terms: int = 1000
+) -> Tuple[Optional[complex], Optional[str], bool]:
+    """
+    Compute the Riemann Zeta function ζ(s) for complex numbers.
+
+    Handles the Dirichlet series, Eta series, and the Functional Equation.
+
+    Args:
+        s (complex): The input complex number.
+        terms (int): Accuracy limit for summation.
+
+    Returns:
+        Tuple: (result_value, description_string, convergence_flag)
+    """
+    if s == 1 + 0j:
+        return None, None, False
+
+    # Trivial Zeros check
+    if s.imag == 0 and s.real < 0 and s.real == float(int(s.real)) \
+            and int(s.real) % 2 == 0:
+        return 0 + 0j, "Trivial Zero", True
+
+    if s.real > 1:
+        zeta_sum = 0 + 0j
+        series_parts = []
+        for n in range(1, terms + 1):
+            term = n**(-s)
+            zeta_sum += term
+            if n <= 5:
+                series_parts.append(f"{n}^(-{s})")
+        series_str = "Σ " + " + ".join(series_parts) + "... (Dirichlet Series)"
+        return zeta_sum, series_str, True
+
+    elif s.real > 0:
+        eta_sum = 0 + 0j
+        series_parts = []
+        for n in range(1, terms + 1):
+            term = ((-1)**(n-1)) * (n**(-s))
+            eta_sum += term
+            if n <= 5:
+                series_parts.append(f"((-1)^{n-1}) * {n}^(-{s})")
+        denominator = 1 - (2**(1-s))
+        zeta_sum = eta_sum / denominator
+        series_str = (f"1/(1-2^(1-{s})) * [Σ " 
+                      f"{' + '.join(series_parts)}... (Eta Series)]")
+        return zeta_sum, series_str, True
+
     else:
-        if s <= 1:
-            raise ValueError("The Reimann zeta function is undefined for s <= 1.")
-    
-    if s == 1 or (isinstance(s, complex) and s == 1+0j):
-        # Harmonic series diverges, return None to indicate divergence
-        return None
-
-    total = 0
-    for k in range(1, terms + 1):
-        total += 1 / (k ** s)
-    return total
-
-
-def get_integer_input(title, prompt):
-    """Ask the user for an integer value via a simple dialog box."""
-    value = simpledialog.askstring(title, prompt)
-    if value is None:
-        return None
-
-    try:
-        n = int(value)
-        return n
-    except ValueError:
-        messagebox.showerror("Input Error", "Please enter a valid integer.")
-        return None
+        # Functional Equation
+        s_reflected = 1 - s
+        zeta_reflected, _, _ = calculate_riemann_zeta(s_reflected, terms)
+        term1 = 2**s
+        term2 = (complex(math.pi)**(s-1))
+        term3 = cmath.sin((math.pi * s) / 2)
+        gamma_val = complex_gamma(1 - s)
+        zeta_sum = term1 * term2 * term3 * gamma_val * zeta_reflected
+        series_str = f"Functional Equation Mapping: ζ({s}) ⮕ ζ({s_reflected})"
+        return zeta_sum, series_str, True
 
 
-def get_float_input(title, prompt):
-    """Ask the user for a floating-point value via a simple dialog box."""
-    value = simpledialog.askstring(title, prompt)
-    if value is None:
-        return None
+# =============================================================================
+# 2. MAIN APPLICATION CLASS
+# =============================================================================
 
-    try:
-        return float(value)
-    except ValueError:
-        messagebox.showerror("Input Error", "Please enter a valid number.")
-        return None
+class FibPrimeApp:
+    """
+    Main application class for the Pro Fibonacci, Prime & Zeta Visualizer.
+    """
 
-
-def plot_values(values, title, xlabel="Index", ylabel="Value"):
-    """Plot a list of values using matplotlib if it is available."""
-    if plt is None:
-        messagebox.showerror(
-            "Plot Error",
-            "Matplotlib is not installed. Install it with `pip install matplotlib` to view graphs."
-        )
-        return
-
-    if not values:
-        messagebox.showinfo("Plot", "No values available to plot.")
-        return
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        plt.style.use('dark_background')
-    
-    plt.figure(figsize=(8, 4))
-    plt.plot(values, marker='o', linestyle='-', color='#4da6ff')
-    plt.title(title)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.grid(True, linestyle='--', alpha=0.6)
-    plt.tight_layout()
-    plt.show()
-
-
-def show_result(title, text):
-    """Display the result text in the read-only scrolling text box."""
-    output_box.config(state="normal")
-    output_box.delete("1.0", tk.END)
-    output_box.insert(tk.END, f"{title}\n\n{text}")
-    output_box.config(state="disabled")
-
-
-def handle_fibonacci():
-    """Handle the Fibonacci menu action and show the result plus a plot."""
-    n = get_integer_input("Fibonacci", "Enter the upper bound n for Fibonacci numbers:")
-    if n is None:
-        return
-
-    sequence = compute_fibonacci(n)
-    if sequence:
-        show_result("Fibonacci Numbers", ", ".join(str(x) for x in sequence))
-        plot_values(sequence, "Fibonacci Numbers", xlabel="Sequence Index", ylabel="Fibonacci Value")
-    else:
-        show_result("Fibonacci Numbers", "No Fibonacci numbers found for the given input.")
-
-
-def handle_primes():
-    """Handle the prime number menu action and show the result plus a plot."""
-    n = get_integer_input("Prime Numbers", "Enter n to list prime numbers up to n:")
-    if n is None:
-        return
-
-    primes = compute_primes(n)
-    if primes:
-        show_result("Prime Numbers", ", ".join(str(x) for x in primes))
-        plot_values(primes, "Prime Numbers", xlabel="Prime Index", ylabel="Prime Value")
-    else:
-        show_result("Prime Numbers", "No prime numbers found for the given input.")
-
-
-def format_zeta_series(s, terms=10):
-    """Create a short string representation of the zeta function series."""
-    parts = []
-    for k in range(1, terms + 1):
-        if k == 1:
-            parts.append("1")
-        else:
-            parts.append(f"1/{k}^{s}")
-    return " + ".join(parts) + " + ..."
-
-
-def show_series_popup(n1, n2, zeta_values):
-    """Display series expansions for zeta function values in a separate popup window."""
-    popup = tk.Toplevel(root)
-    popup.title("Reimann Zeta Function - Series Expansions")
-    popup.geometry("700x500")
-    apply_glassy_style(popup)
-    
-    # Create a scrolled text widget for the series expansions
-    text_widget = scrolledtext.ScrolledText(popup, wrap=tk.WORD, state="normal", font=("Courier", 10), bg="#2d2d2d", fg="#ffffff", insertbackground="#ffffff")
-    text_widget.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-    
-    # Add series expansions for each value
-    for idx, s in enumerate(range(n1, n2 + 1)):
-        zeta_val = zeta_values[idx]
-        
-        text_widget.insert(tk.END, f"\nζ({s}):\n")
-        
-        if s == 1:
-            text_widget.insert(tk.END, "Series: 1 + 1/2 + 1/3 + 1/4 + ... (Harmonic Series - DIVERGES)\n")
-            text_widget.insert(tk.END, "Value: Undefined (diverges to infinity)\n")
-        else:
-            series = format_zeta_series(s, terms=8)
-            text_widget.insert(tk.END, f"Series: {series}\n")
-            text_widget.insert(tk.END, f"Value: {zeta_val:.12f}\n")
-        
-        text_widget.insert(tk.END, "-" * 70 + "\n")
-    
-    text_widget.config(state="disabled")
-    
-    # Add a close button
-    close_button = tk.Button(popup, text="Close", command=popup.destroy, bg="#3d3d3d", fg="#ffffff", activebackground="#404040", activeforeground="#ffffff", relief="flat", bd=0)
-    close_button.pack(pady=10)
-
-
-def get_zeta_type():
-    """Show a dialog to choose between Real and Complex zeta function."""
-    choice_window = tk.Toplevel(root)
-    choice_window.title("Reimann Zeta Function - Choose Type")
-    choice_window.geometry("300x150")
-    choice_window.resizable(False, False)
-    apply_glassy_style(choice_window)
-    choice_window.transient(root)
-    choice_window.grab_set()
-
-    result = {"type": None, "cancelled": True}
-
-    label = tk.Label(choice_window, text="Choose the type of Reimann Zeta function:", font=("Segoe UI", 10), bg="#1e1e1e", fg="#ffffff")
-    label.pack(pady=(20, 10))
-
-    button_frame = tk.Frame(choice_window, bg="#1e1e1e")
-    button_frame.pack(pady=(0, 20))
-
-    def choose_real():
-        result["type"] = "real"
-        result["cancelled"] = False
-        choice_window.destroy()
-
-    def choose_complex():
-        result["type"] = "complex"
-        result["cancelled"] = False
-        choice_window.destroy()
-
-    real_button = tk.Button(button_frame, text="Real", width=10, command=choose_real, bg="#3d3d3d", fg="#ffffff", activebackground="#404040", activeforeground="#ffffff", relief="flat", bd=0)
-    real_button.pack(side=tk.LEFT, padx=10)
-
-    complex_button = tk.Button(button_frame, text="Complex", width=10, command=choose_complex, bg="#3d3d3d", fg="#ffffff", activebackground="#404040", activeforeground="#ffffff", relief="flat", bd=0)
-    complex_button.pack(side=tk.LEFT, padx=10)
-
-    choice_window.wait_window()
-    return result
-
-
-def handle_zeta_choice():
-    """Handle the zeta button by first choosing the type."""
-    choice = get_zeta_type()
-    if choice["cancelled"]:
-        return
-    if choice["type"] == "real":
-        handle_zeta()
-    elif choice["type"] == "complex":
-        handle_zeta_complex()
-
-
-def get_zeta_inputs():
-    """Show a dialog to get N1 and N2 values in a single popup window."""
-    input_window = tk.Toplevel(root)
-    input_window.title("Reimann Zeta Function - Input")
-    input_window.geometry("380x200")
-    input_window.resizable(False, False)
-    apply_glassy_style(input_window)
-    input_window.transient(root)
-    input_window.grab_set()
-
-    result = {"n1": None, "n2": None, "cancelled": True}
-
-    # N1 Label and Entry
-    n1_label = tk.Label(input_window, text="N1 (starting value, must be >= 1):", font=("Segoe UI", 10), bg="#1e1e1e", fg="#ffffff")
-    n1_label.pack(padx=20, pady=(20, 5), anchor="w")
-
-    n1_entry = tk.Entry(input_window, font=("Segoe UI", 10), width=25, bg="#3d3d3d", fg="#ffffff", insertbackground="#ffffff")
-    n1_entry.pack(padx=20, pady=(0, 15))
-    n1_entry.focus()
-
-    # N2 Label and Entry
-    n2_label = tk.Label(input_window, text="N2 (ending value):", font=("Segoe UI", 10), bg="#1e1e1e", fg="#ffffff")
-    n2_label.pack(padx=20, pady=(0, 5), anchor="w")
-
-    n2_entry = tk.Entry(input_window, font=("Segoe UI", 10), width=25, bg="#3d3d3d", fg="#ffffff", insertbackground="#ffffff")
-    n2_entry.pack(padx=20, pady=(0, 20))
-
-    # Button Frame
-    button_frame = tk.Frame(input_window, bg="#1e1e1e")
-    button_frame.pack(pady=(0, 15))
-
-    def submit_inputs():
-        try:
-            n1 = int(n1_entry.get())
-            n2 = int(n2_entry.get())
-            result["n1"] = n1
-            result["n2"] = n2
-            result["cancelled"] = False
-            input_window.destroy()
-        except ValueError:
-            messagebox.showerror("Input Error", "Please enter valid integers for both fields.")
-
-    submit_button = tk.Button(button_frame, text="OK", width=10, command=submit_inputs, bg="#3d3d3d", fg="#ffffff", activebackground="#404040", activeforeground="#ffffff", relief="flat", bd=0)
-    submit_button.pack(side=tk.LEFT, padx=5)
-
-    cancel_button = tk.Button(button_frame, text="Cancel", width=10, command=input_window.destroy, bg="#3d3d3d", fg="#ffffff", activebackground="#404040", activeforeground="#ffffff", relief="flat", bd=0)
-    cancel_button.pack(side=tk.LEFT, padx=5)
-
-    input_window.wait_window()
-    return result
-
-
-def handle_zeta():
-    """Handle the Reimann zeta function menu action and display values from N1 to N2."""
-    # Get N1 and N2 from combined input dialog
-    input_result = get_zeta_inputs()
-    if input_result["cancelled"]:
-        return
-
-    n1 = input_result["n1"]
-    n2 = input_result["n2"]
-
-    # Validate inputs
-    if n1 < 1:
-        messagebox.showerror("Zeta Error", "N1 must be greater than or equal to 1.")
-        return
-
-    if n2 <= n1:
-        messagebox.showerror("Zeta Error", "N2 must be greater than N1.")
-        return
-
-    if n2 - n1 > 50:
-        messagebox.showerror("Zeta Error", "The range (N2 - N1) must not exceed 50.")
-        return
-    
-    try:
-        # Compute zeta values for the range
-        zeta_values = []
-        indices = []
-        
-        for s in range(n1, n2 + 1):
-            zeta_val = compute_zeta(s)
-            zeta_values.append(zeta_val)
-            indices.append(s)
-        
-        # Create table output
-        table_output = "Reimann Zeta Function Values\n"
-        table_output += "=" * 50 + "\n"
-        table_output += f"{'Index':<10} | {'ζ(n)':<35}\n"
-        table_output += "-" * 50 + "\n"
-        
-        for idx, zeta_val in zip(indices, zeta_values):
-            if zeta_val is None:
-                table_output += f"{idx:<10} | {'Diverges (Harmonic Series)':<35}\n"
-            else:
-                table_output += f"{idx:<10} | {zeta_val:.12f}\n"
-        
-        show_result("Reimann Zeta Function", table_output)
-        
-        # Show series expansions in popup
-        show_series_popup(n1, n2, zeta_values)
-        
-        # Filter out None values for plotting
-        valid_zeta_values = [z if z is not None else 0 for z in zeta_values]
-        valid_indices = [i for i, z in zip(indices, zeta_values) if z is not None]
-        
-        # Plot the zeta values (excluding s=1 if present)
-        if valid_indices:
-            plot_values(valid_zeta_values, "Reimann Zeta Function Values", xlabel="n", ylabel="ζ(n)")
-        
-    except ValueError as exc:
-        messagebox.showerror("Zeta Error", str(exc))
-
-
-def handle_zeta_complex():
-    """Handle the complex Reimann zeta function menu action."""
-    s_str = simpledialog.askstring("Reimann Zeta (complex)", "Enter complex number s as a+bj (e.g., 0.5+1j):")
-    if s_str is None:
-        return
-
-    try:
-        s = complex(s_str)
-    except ValueError:
-        messagebox.showerror("Input Error", "Please enter a valid complex number.")
-        return
-
-    try:
-        zeta_val = compute_zeta(s)
-        # Show result
-        if zeta_val is None:
-            show_result("Reimann Zeta (complex)", f"ζ({s}) diverges.")
-        else:
-            show_result("Reimann Zeta (complex)", f"ζ({s}) = {zeta_val}")
-        # Show series popup
-        show_complex_series_popup(s, zeta_val)
-    except ValueError as exc:
-        messagebox.showerror("Zeta Error", str(exc))
-
-
-def show_complex_series_popup(s, zeta_val):
-    """Display series expansion for complex zeta function in a separate popup window."""
-    popup = tk.Toplevel(root)
-    popup.title("Reimann Zeta Function - Complex Series Expansion")
-    popup.geometry("700x500")
-    apply_glassy_style(popup)
-    
-    # Create a scrolled text widget for the series expansion
-    text_widget = scrolledtext.ScrolledText(popup, wrap=tk.WORD, state="normal", font=("Courier", 10), bg="#2d2d2d", fg="#ffffff", insertbackground="#ffffff")
-    text_widget.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-    
-    text_widget.insert(tk.END, f"ζ({s}):\n")
-    if zeta_val is None:
-        text_widget.insert(tk.END, "Series: 1 + 1/2 + 1/3 + 1/4 + ... (Harmonic Series - DIVERGES)\n")
-        text_widget.insert(tk.END, "Value: Undefined (diverges to infinity)\n")
-    else:
-        series = format_zeta_series(s, terms=8)
-        text_widget.insert(tk.END, f"Series: {series}\n")
-        text_widget.insert(tk.END, f"Value: {zeta_val}\n")
-    
-    text_widget.config(state="disabled")
-    
-    # Add a close button
-    close_button = tk.Button(popup, text="Close", command=popup.destroy, bg="#3d3d3d", fg="#ffffff", activebackground="#404040", activeforeground="#ffffff", relief="flat", bd=0)
-    close_button.pack(pady=10)
-
-
-def get_help_text(topic):
-    """Return a short theoretical description for a selected topic."""
-    help_texts = {
-        "Fibonacci": (
-            "The Fibonacci sequence is defined by the recurrence F(n)=F(n-1)+F(n-2), "
-            "starting with F(1)=1 and F(2)=1. It appears in nature, combinatorics, and "
-            "has connections to the golden ratio as the ratio of successive terms converges."
-        ),
-        "Prime Numbers": (
-            "A prime number is an integer greater than 1 that has no positive divisors "
-            "other than 1 and itself. Primes are the building blocks of number theory "
-            "and are fundamental in cryptography, factorization, and arithmetic structure."
-        ),
-        "Reimann Zeta Function": (
-            "The Reimann zeta function ζ(s) is defined for complex values of s by the series "
-            "ζ(s)=∑_{k=1}^∞ 1/k^s when Re(s)>1. It extends analytically to other values and is "
-            "central to the distribution of prime numbers through its non-trivial zeros."
-        ),
+    # Define colors as a class constant to avoid redefining in __init__
+    COLORS = {
+        "primary": "#2c3e50",
+        "secondary": "#3498db",
+        "save_accent": "#2980b9",
+        "fib_accent": "#e67e22",
+        "prime_accent": "#27ae60",
+        "zeta_accent": "#8e44ad",
+        "danger": "#e74c3c",
+        "text_dark": "#2f3640",
+        "bg_light": "#ffffff"
     }
-    return help_texts.get(topic, "")
 
+    def __init__(self, root: tk.Tk):
+        """Initialize the application window and layout."""
+        self.root = root
+        self.root.title("Pro Fibonacci, Prime & Zeta Visualizer")
+        self.root.geometry("800x700")
+        self.root.configure(bg="#f5f6fa")
 
-def handle_help():
-    """Show a help popup with a dropdown menu for theoretical details."""
-    popup = tk.Toplevel(root)
-    popup.title("Help")
-    popup.geometry("540x320")
-    popup.resizable(False, False)
-    apply_glassy_style(popup)
+        self.current_data: List[Union[int, float]] = []
+        self.zeta_pairs: List[Tuple[complex, complex]] = []
 
-    instruction_label = tk.Label(
-        popup,
-        text="Select a topic from the dropdown to view a brief theoretical explanation.",
-        font=("Segoe UI", 10),
-        bg="#1e1e1e",
-        fg="#ffffff"
-    )
-    instruction_label.pack(padx=12, pady=(12, 6))
+        self.center_window()
+        self.setup_navigation()
 
-    selected_topic = tk.StringVar(value="Fibonacci")
-    dropdown = tk.OptionMenu(popup, selected_topic, "Fibonacci", "Prime Numbers", "Reimann Zeta Function")
-    dropdown.config(width=28, bg="#3d3d3d", fg="#ffffff", activebackground="#404040", activeforeground="#ffffff")
-    dropdown.pack(padx=12, pady=(0, 12))
+        self.content_frame = tk.Frame(
+            self.root, bg=self.COLORS["bg_light"],
+            padx=30, pady=30, highlightthickness=1,
+            highlightbackground="#dcdde1"
+        )
+        self.content_frame.pack(expand=True, fill="both", padx=40, pady=40)
 
-    help_text_box = scrolledtext.ScrolledText(popup, wrap=tk.WORD, state="disabled", width=62, height=10, bg="#2d2d2d", fg="#ffffff", insertbackground="#ffffff")
-    help_text_box.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 10))
+        self.show_fib_screen()
 
-    def update_help_text(*args):
-        help_text_box.config(state="normal")
-        help_text_box.delete("1.0", tk.END)
-        help_text_box.insert(tk.END, get_help_text(selected_topic.get()))
-        help_text_box.config(state="disabled")
+    def setup_navigation(self) -> None:
+        """Initializes the top navigation bar and its buttons."""
+        self.nav_bar = tk.Frame(self.root, bg=self.COLORS["primary"], pady=15)
+        self.nav_bar.pack(fill="x")
 
-    selected_topic.trace_add("write", update_help_text)
-    update_help_text()
+        # Navigation button configuration
+        nav_buttons = [
+            ("Fibonacci", self.show_fib_screen, "left"),
+            ("Primes", self.show_prime_screen, "left"),
+            ("Zeta Function", self.show_zeta_screen, "left"),
+        ]
 
-    close_button = tk.Button(popup, text="Close", width=10, command=popup.destroy, bg="#3d3d3d", fg="#ffffff", activebackground="#404040", activeforeground="#ffffff", relief="flat", bd=0)
-    close_button.pack(pady=(0, 10))
+        for text, cmd, side in nav_buttons:
+            btn = tk.Button(
+                self.nav_bar, text=text, command=cmd,
+                bg=self.COLORS["primary"], fg="white", relief="flat",
+                font=("Segoe UI", 10, "bold"), padx=15, cursor="hand2"
+            )
+            btn.pack(side=side, padx=15)
 
+        self.btn_about = tk.Button(
+            self.nav_bar, text="About", command=self.show_about,
+            bg=self.COLORS["primary"], fg="#bdc3c7", relief="flat",
+            font=("Segoe UI", 10), padx=15, cursor="hand2"
+        )
+        self.btn_about.pack(side="right", padx=15)
 
-def apply_glassy_style(window):
-    """Apply a glassy Windows 11 style to the window."""
-    try:
-        # For Windows 10/11, apply dark theme colors
-        if sys.platform == "win32" and windll is not None:
-            # Try to enable dark title bar for Windows 11
-            try:
-                DWMWA_USE_IMMERSIVE_DARK_MODE = 20
-                set_window_attribute = windll.dwmapi.DwmSetWindowAttribute
-                get_parent = windll.user32.GetParent
-                hwnd = get_parent(window.winfo_id())
-                render_target = windll.user32.FindWindowExW(hwnd, None, "TKinterEmbedding", None)
-                if render_target:
-                    set_window_attribute(render_target, DWMWA_USE_IMMERSIVE_DARK_MODE, ctypes.byref(ctypes.c_int(1)), ctypes.sizeof(ctypes.c_int))
-            except Exception:
-                pass
+        self.btn_exit = tk.Button(
+            self.nav_bar, text="Exit", command=self.root.destroy,
+            bg=self.COLORS["danger"], fg="white", relief="flat",
+            font=("Segoe UI", 10, "bold"), padx=15, cursor="hand2"
+        )
+        self.btn_exit.pack(side="right", padx=15)
 
-        # Set modern colors
-        bg_color = "#1e1e1e"
-        fg_color = "#ffffff"
-        window.configure(bg=bg_color)
+    def center_window(self) -> None:
+        """Centers the main application window on the screen."""
+        self.root.update_idletasks()
+        width, height = 800, 700
+        x = (self.root.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.root.winfo_screenheight() // 2) - (height // 2)
+        self.root.geometry(f'{width}x{height}+{x}+{y}')
 
-        # Update all child widgets with modern styling
-        for child in window.winfo_children():
-            apply_widget_style(child, bg_color, fg_color)
-    except Exception:
-        pass
+    def clear_frame(self) -> None:
+        """Removes all widgets from the content frame."""
+        for widget in self.content_frame.winfo_children():
+            widget.destroy()
 
+    def create_input_field(self, label_text: str) -> ttk.Entry:
+        """Helper to create a label and an entry field."""
+        tk.Label(
+            self.content_frame, text=label_text, font=("Segoe UI", 11),
+            bg=self.COLORS["bg_light"], fg=self.COLORS["text_dark"]
+        ).pack(pady=(10, 5))
+        entry = ttk.Entry(self.content_frame, justify='center', font=("Segoe UI", 12))
+        entry.pack(pady=5)
+        return entry
 
-def apply_widget_style(widget, bg_color, fg_color):
-    """Recursively apply glassy styling to widgets."""
-    try:
-        if isinstance(widget, tk.Label):
-            widget.configure(bg=bg_color, fg=fg_color)
-        elif isinstance(widget, tk.Frame):
-            widget.configure(bg=bg_color)
-        elif isinstance(widget, tk.Button):
-            widget.configure(bg="#3d3d3d", fg=fg_color, activebackground="#404040", activeforeground=fg_color, relief="flat", bd=0)
-        elif isinstance(widget, (scrolledtext.ScrolledText, tk.Text)):
-            widget.configure(bg="#2d2d2d", fg=fg_color, insertbackground=fg_color)
-        elif isinstance(widget, tk.Entry):
-            widget.configure(bg="#3d3d3d", fg=fg_color, insertbackground=fg_color)
-        elif isinstance(widget, tk.OptionMenu):
-            widget.configure(bg="#3d3d3d", fg=fg_color, activebackground="#404040", activeforeground=fg_color)
+    def create_result_display(self) -> tk.Text:
+        """Creates a scrollable text area for results."""
+        container = tk.Frame(self.content_frame, bg=self.COLORS["bg_light"])
+        container.pack(pady=20, expand=True, fill="both")
+        
+        v_scroll = tk.Scrollbar(container, orient="vertical")
+        v_scroll.pack(side="right", fill="y")
+        
+        text_area = tk.Text(
+            container, wrap="word", font=("Consolas", 11),
+            bg="#f9f9f9", relief="flat", padx=10, pady=10
+        )
+        text_area.pack(side="left", expand=True, fill="both")
+        text_area.config(yscrollcommand=v_scroll.set)
+        v_scroll.config(command=text_area.yview)
+        text_area.config(state="disabled")
+        return text_area
 
-        # Recursively style child widgets
-        for child in widget.winfo_children():
-            apply_widget_style(child, bg_color, fg_color)
-    except Exception:
-        pass
+    def format_indexed_data(self, data: List[Union[int, float]]) -> str:
+        """Formats a list of numbers into indexed strings arranged in rows of 10."""
+        indexed_list = [f"{i+1}) {val}" for i, val in enumerate(data)]
+        rows = []
+        for i in range(0, len(indexed_list), 10):
+            chunk = indexed_list[i : i + 10]
+            rows.append(", ".join(chunk))
+        return "\n".join(rows)
 
+    def show_fib_screen(self) -> None:
+        """Sets up the UI for the Fibonacci generator."""
+        self.clear_frame()
+        tk.Label(
+            self.content_frame, text="Fibonacci Sequence", 
+            font=("Segoe UI", 16, "bold"), bg=self.COLORS["bg_light"], 
+            fg=self.COLORS["primary"]
+        ).pack(pady=(0, 20))
+        
+        self.entry_n = self.create_input_field("Enter number of elements (N):")
+        
+        btn_frame = tk.Frame(self.content_frame, bg=self.COLORS["bg_light"])
+        btn_frame.pack(pady=20)
+        
+        tk.Button(
+            btn_frame, text="Generate", bg=self.COLORS["fib_accent"], 
+            fg="white", font=("Segoe UI", 10, "bold"), relief="flat", 
+            padx=15, cursor="hand2", command=lambda: self.start_thread(self.exec_fib)
+        ).pack(side="left", padx=5)
+        
+        self.btn_plot = tk.Button(
+            btn_frame, text="Visualize", bg=self.COLORS["secondary"], 
+            fg="white", font=("Segoe UI", 10, "bold"), relief="flat",
+            padx=15, cursor="hand2", state="disabled",
+            command=lambda: self.plot_data("Fibonacci")
+        )
+        self.btn_plot.pack(side="left", padx=5)
+        
+        self.btn_save = tk.Button(
+            btn_frame, text="Save to CSV", bg=self.COLORS["save_accent"], 
+            fg="white", font=("Segoe UI", 10, "bold"), relief="flat",
+            padx=15, cursor="hand2", state="disabled",
+            command=lambda: self.export_to_csv("Fib", ["Index N", "Fibonacci Number"])
+        )
+        self.btn_save.pack(side="left", padx=5)
+        self.result_label = self.create_result_display()
 
-def handle_exit():
-    """Exit the GUI application cleanly."""
-    if root is not None:
-        root.destroy()
+    def show_prime_screen(self) -> None:
+        """Sets up the UI for the Prime number generator."""
+        self.clear_frame()
+        tk.Label(
+            self.content_frame, text="Prime Number Generator", 
+            font=("Segoe UI", 16, "bold"), bg=self.COLORS["bg_light"], 
+            fg=self.COLORS["primary"]
+        ).pack(pady=(0, 20))
+        
+        self.entry_n = self.create_input_field("Enter limit (N):")
+        
+        btn_frame = tk.Frame(self.content_frame, bg=self.COLORS["bg_light"])
+        btn_frame.pack(pady=20)
+        
+        tk.Button(
+            btn_frame, text="Generate", bg=self.COLORS["prime_accent"], 
+            fg="white", font=("Segoe UI", 10, "bold"), relief="flat", 
+            padx=15, cursor="hand2", command=lambda: self.start_thread(self.exec_prime)
+        ).pack(side="left", padx=5)
+        
+        self.btn_plot = tk.Button(
+            btn_frame, text="Visualize", bg=self.COLORS["secondary"], 
+            fg="white", font=("Segoe UI", 10, "bold"), relief="flat",
+            padx=15, cursor="hand2", state="disabled",
+            command=lambda: self.plot_data("Prime")
+        )
+        self.btn_plot.pack(side="left", padx=5)
+        
+        self.btn_save = tk.Button(
+            btn_frame, text="Save to CSV", bg=self.COLORS["save_accent"], 
+            fg="white", font=("Segoe UI", 10, "bold"), relief="flat",
+            padx=15, cursor="hand2", state="disabled",
+            command=lambda: self.export_to_csv("prime", ["Index N", "Prime Number"])
+        )
+        self.btn_save.pack(side="left", padx=5)
+        self.result_label = self.create_result_display()
 
+    def show_zeta_screen(self) -> None:
+        """Sets up the UI for the Riemann Zeta calculator."""
+        self.clear_frame()
+        tk.Label(
+            self.content_frame, text="Riemann Zeta Function", 
+            font=("Segoe UI", 16, "bold"), bg=self.COLORS["bg_light"], 
+            fg=self.COLORS["primary"]
+        ).pack(pady=(0, 20))
+        
+        self.entry_n = self.create_input_field(
+            "Enter complex numbers s (separated by , or ; e.g., 2, -2, 0.5+14.13j, 2+2j):"
+        )
+        
+        btn_frame = tk.Frame(self.content_frame, bg=self.COLORS["bg_light"])
+        btn_frame.pack(pady=20)
 
-def main():
-    """Create and display the main Tkinter window with buttons and menus."""
-    global root, output_box
+        tk.Button(
+            btn_frame, text="Calculate Zeta", bg=self.COLORS["zeta_accent"], 
+            fg="white", font=("Segoe UI", 10, "bold"), relief="flat", 
+            padx=15, cursor="hand2", command=lambda: self.start_thread(self.exec_zeta)
+        ).pack(side="left", padx=5)
 
-    root = tk.Tk()
-    root.title("Number Functions GUI")
-    root.geometry("640x420")
-    root.resizable(False, False)
-    apply_glassy_style(root)
+        self.btn_zeta_plot_2d = tk.Button(
+            btn_frame, text="Visualize 2D", bg=self.COLORS["secondary"], 
+            fg="white", font=("Segoe UI", 10, "bold"), relief="flat",
+            padx=15, cursor="hand2", state="disabled",
+            command=lambda: self.plot_zeta_complex()
+        )
+        self.btn_zeta_plot_2d.pack(side="left", padx=5)
 
-    # Create the top menu with function choices.
-    menu_bar = tk.Menu(root, bg="#2d2d2d", fg="#ffffff", activebackground="#404040", activeforeground="#ffffff")
-    functions_menu = tk.Menu(menu_bar, tearoff=0, bg="#2d2d2d", fg="#ffffff", activebackground="#404040", activeforeground="#ffffff")
-    functions_menu.add_command(label="Fibonacci", command=handle_fibonacci)
-    functions_menu.add_command(label="Prime Numbers", command=handle_primes)
-    zeta_menu = tk.Menu(functions_menu, tearoff=0, bg="#2d2d2d", fg="#ffffff", activebackground="#404040", activeforeground="#ffffff")
-    functions_menu.add_cascade(label="Reimann Zeta Function", menu=zeta_menu)
-    zeta_menu.add_command(label="Reimann Zeta function (Real)", command=handle_zeta)
-    zeta_menu.add_command(label="Reimann Zeta function (complex)", command=handle_zeta_complex)
-    functions_menu.add_separator()
-    functions_menu.add_command(label="Exit", command=handle_exit)
-    menu_bar.add_cascade(label="Functions", menu=functions_menu)
+        self.btn_zeta_plot_3d = tk.Button(
+            btn_frame, text="Visualize 3D", bg=self.COLORS["secondary"], 
+            fg="white", font=("Segoe UI", 10, "bold"), relief="flat",
+            padx=15, cursor="hand2", state="disabled",
+            command=lambda: self.plot_zeta_3d()
+        )
+        self.btn_zeta_plot_3d.pack(side="left", padx=5)
 
-    # Add a simple About menu with an About dialog.
-    help_menu = tk.Menu(menu_bar, tearoff=0, bg="#2d2d2d", fg="#ffffff", activebackground="#404040", activeforeground="#ffffff")
-    help_menu.add_command(label="About", command=lambda: messagebox.showinfo(
-        "About", "This GUI computes Fibonacci numbers, prime numbers up to n, and the Reimann zeta function for a given value. The software is for educational purpose only.\n\nAuthor: Praveen KN with help from coPilot"))
-    menu_bar.add_cascade(label="About", menu=help_menu)
-    root.config(menu=menu_bar)
+        self.result_label = self.create_result_display()
 
-    frame = tk.Frame(root, padx=12, pady=12, bg="#1e1e1e")
-    frame.pack(fill=tk.BOTH, expand=True)
+    def export_to_csv(self, prefix: str, headers: List[str]) -> None:
+        """Exports sequence data to a CSV file in the Downloads folder."""
+        if not self.current_data:
+            return
+        
+        downloads_folder = os.path.join(os.path.expanduser("~"), "Downloads")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{prefix}_{timestamp}.csv"
+        full_path = os.path.join(downloads_folder, filename)
+        
+        try:
+            with open(full_path, mode='w', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(headers)
+                for i, value in enumerate(self.current_data, start=1):
+                    writer.writerow([i, value])
+            messagebox.showinfo("Export Successful", f"File saved to:\n{filename}")
+        except Exception as e:
+            messagebox.showerror("Export Error", f"Could not save file: {e}")
 
-    instruction = tk.Label(frame, text="Choose a function from the top menu or use the buttons below.", font=("Segoe UI", 11), bg="#1e1e1e", fg="#ffffff")
-    instruction.pack(pady=(0, 8))
+    def start_thread(self, target_func) -> None:
+        """Executes computations in a separate daemon thread."""
+        threading.Thread(target=target_func, daemon=True).start()
 
-    button_frame = tk.Frame(frame, bg="#1e1e1e")
-    button_frame.pack(fill=tk.X, pady=(0, 10))
+    def exec_fib(self) -> None:
+        """Validates input and generates Fibonacci sequence."""
+        try:
+            n = int(self.entry_n.get())
+            if n > 10000:
+                messagebox.showwarning("Limit", "Please enter N ≤ 10,000.")
+                return
+            self.current_data = generate_fibonacci_list(n)
+            result_text = self.format_indexed_data(self.current_data)
+            self.root.after(0, self.display_result, result_text)
+            self.root.after(0, lambda: self.btn_plot.config(state="normal"))
+            self.root.after(0, lambda: self.btn_save.config(state="normal"))
+        except ValueError:
+            self.root.after(0, lambda: messagebox.showerror("Error", "Invalid integer."))
 
-    fibonacci_button = tk.Button(button_frame, text="Fibonacci", width=16, command=handle_fibonacci, bg="#3d3d3d", fg="#ffffff", activebackground="#404040", activeforeground="#ffffff", relief="flat", bd=0)
-    fibonacci_button.pack(side=tk.LEFT, padx=4)
+    def exec_prime(self) -> None:
+        """Validates input and generates Prime numbers."""
+        try:
+            n = int(self.entry_n.get())
+            if n > 10000000:
+                messagebox.showwarning("Limit", "Please enter N ≤ 10,000,000.")
+                return
+            self.current_data = generate_primes_list(n)
+            result_text = self.format_indexed_data(self.current_data)
+            self.root.after(0, self.display_result, result_text)
+            self.root.after(0, lambda: self.btn_plot.config(state="normal"))
+            self.root.after(0, lambda: self.btn_save.config(state="normal"))
+        except ValueError:
+            self.root.after(0, lambda: messagebox.showerror("Error", "Invalid integer."))
 
-    primes_button = tk.Button(button_frame, text="Prime Numbers", width=16, command=handle_primes, bg="#3d3d3d", fg="#ffffff", activebackground="#404040", activeforeground="#ffffff", relief="flat", bd=0)
-    primes_button.pack(side=tk.LEFT, padx=4)
+    def exec_zeta(self) -> None:
+        """Processes Riemann Zeta calculations for multiple complex inputs."""
+        try:
+            raw_input = self.entry_n.get()
+            s_strings = [x.strip() for x in raw_input.replace(';', ',').split(',')]
+            
+            self.zeta_pairs = []
+            all_results = []
+            zeta_symbol = "ζ"
 
-    zeta_button = tk.Button(button_frame, text="Reimann Zeta function", width=16, command=handle_zeta_choice, bg="#3d3d3d", fg="#ffffff", activebackground="#404040", activeforeground="#ffffff", relief="flat", bd=0)
-    zeta_button.pack(side=tk.LEFT, padx=4)
+            for idx, s_str in enumerate(s_strings, 1):
+                try:
+                    s_val = complex(s_str)
+                    val, series, converges = calculate_riemann_zeta(s_val)
+                    
+                    if converges:
+                        if series == "Trivial Zero":
+                            line = (f"{idx}. {zeta_symbol}({s_str}) = Trivial Zero\n"
+                                   f"   {zeta_symbol}({s_str}) = 0 (Negative Even Integer)\n")
+                        else:
+                            line = (f"{idx}. {zeta_symbol}({s_str}) = {val}\n"
+                                   f"   {zeta_symbol}({s_str}) = {series}\n")
+                        
+                        if val is not None:
+                            self.zeta_pairs.append((s_val, val))
+                    else:
+                        line = (f"{idx}. {zeta_symbol}({s_str}) = Diverges\n"
+                                f"   {zeta_symbol}({s_str}) = Pole at s=1\n")
+                    
+                    all_results.append(line)
+                except ValueError:
+                    all_results.append(f"{idx}. Error: '{s_str}' is invalid.\n")
 
-    help_button = tk.Button(button_frame, text="Help", width=10, command=handle_help, bg="#3d3d3d", fg="#ffffff", activebackground="#404040", activeforeground="#ffffff", relief="flat", bd=0)
-    help_button.pack(side=tk.LEFT, padx=4)
+            final_text = "\n".join(all_results)
+            self.root.after(0, self.display_result, final_text)
+            
+            status = "normal" if self.zeta_pairs else "disabled"
+            self.root.after(0, lambda: self.btn_zeta_plot_2d.config(state=status))
+            self.root.after(0, lambda: self.btn_zeta_plot_3d.config(state=status))
+            
+        except Exception as e:
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Error: {e}"))
 
-    exit_button = tk.Button(button_frame, text="Exit", width=10, command=handle_exit, bg="#3d3d3d", fg="#ffffff", activebackground="#404040", activeforeground="#ffffff", relief="flat", bd=0)
-    exit_button.pack(side=tk.RIGHT, padx=4)
+    def display_result(self, text: str) -> None:
+        """Updates the text area with the final calculated result."""
+        self.result_label.config(state="normal")
+        self.result_label.delete("1.0", tk.END)
+        self.result_label.insert(tk.END, text)
+        self.result_label.config(state="disabled")
 
-    output_box = scrolledtext.ScrolledText(frame, wrap=tk.WORD, width=72, height=18, state="disabled", bg="#2d2d2d", fg="#ffffff", insertbackground="#ffffff")
-    output_box.pack(fill=tk.BOTH, expand=True)
+    def plot_data(self, mode: str) -> None:
+        """Plots Fibonacci or Prime distributions."""
+        if not self.current_data:
+            return
+        plt.style.use('seaborn-v0_8-muted')
+        fig, ax = plt.subplots(figsize=(11, 7))
+        x = np.arange(1, len(self.current_data) + 1)
+        y = np.array(self.current_data)
 
-    root.mainloop()
+        if len(x) > 5000:
+            indices = np.linspace(0, len(x)-1, 5000, dtype=int)
+            x_plot, y_plot = x[indices], y[indices]
+        else:
+            x_plot, y_plot = x, y
+
+        color = self.COLORS["fib_accent"] if mode == "Fibonacci" \
+                else self.COLORS["prime_accent"]
+        ax.plot(x_plot, y_plot, color=color, linewidth=2, alpha=0.8)
+        
+        if mode == "Fibonacci":
+            ax.set_yscale('log')
+            ax.set_title(f"{mode} Distribution (Log Scale)", fontsize=14, fontweight='bold')
+        else:
+            ax.set_title(f"{mode} Distribution", fontsize=14, fontweight='bold')
+
+        ax.set_xlabel("Index (N)", fontsize=12)
+        ax.set_ylabel("Value", fontsize=12)
+        ax.grid(True, linestyle='--', alpha=0.6)
+
+        annot = ax.annotate("", xy=(0,0), xytext=(20,20), textcoords="offset points",
+                            bbox=dict(boxstyle="round", fc="w", ec="0.5", alpha=0.9),
+                            arrowprops=dict(arrowstyle="->", color='k'))
+        annot.set_visible(False)
+        cursor_marker = ax.plot(0, 0, 'ro', markersize=6)[0]
+        cursor_marker.set_visible(False)
+
+        def update_annot(ind):
+            idx = int(round(ind[0])) - 1
+            idx = max(0, min(idx, len(self.current_data)-1))
+            pos = (x[idx], y[idx])
+            annot.xy = pos
+            annot.set_text(f"Index: {x[idx]}\nValue: {y[idx]}")
+            cursor_marker.set_data([x[idx]], [y[idx]])
+            annot.set_visible(True)
+            cursor_marker.set_visible(True)
+
+        def hover(event):
+            if event.inaxes == ax:
+                update_annot((event.xdata, event.ydata))
+                fig.canvas.draw_idle()
+            else:
+                annot.set_visible(False)
+                cursor_marker.set_visible(False)
+                fig.canvas.draw_idle()
+
+        fig.canvas.mpl_connect("motion_notify_event", hover)
+        plt.tight_layout()
+        plt.show()
+
+    def plot_zeta_complex(self) -> None:
+        """Plots s and zeta(s) on the complex plane."""
+        if not self.zeta_pairs:
+            return
+        
+        plt.style.use('seaborn-v0_8-muted')
+        fig, ax = plt.subplots(figsize=(10, 8))
+        
+        s_reals = [p[0].real for p in self.zeta_pairs]
+        s_imags = [p[0].imag for p in self.zeta_pairs]
+        z_reals = [p[1].real for p in self.zeta_pairs]
+        z_imags = [p[1].imag for p in self.zeta_pairs]
+        
+        ax.scatter(s_reals, s_imags, color=self.COLORS["secondary"], 
+                  label='Input $s$', zorder=3, s=60, edgecolors='k')
+        ax.scatter(z_reals, z_imags, color=self.COLORS["zeta_accent"], 
+                  label=r'$\zeta(s)$', zorder=3, s=60, edgecolors='k')
+        
+        for i in range(len(self.zeta_pairs)):
+            ax.plot([s_reals[i], z_reals[i]], [s_imags[i], z_imags[i]], 
+                    color='gray', linestyle='--', alpha=0.4, zorder=2)
+
+        ax.axhline(0, color='black', linewidth=1)
+        ax.axvline(0, color='black', linewidth=1)
+        ax.set_title("Riemann Zeta Mapping in the Complex Plane", 
+                    fontsize=14, fontweight='bold')
+        ax.set_xlabel("Real Part (Re)", fontsize=12)
+        ax.set_ylabel("Imaginary Part (Im)", fontsize=12)
+        ax.legend()
+        ax.grid(True, linestyle=':', alpha=0.6)
+        ax.set_aspect('equal')
+
+        annot = ax.annotate("", xy=(0,0), xytext=(15,15), textcoords="offset points",
+                            bbox=dict(boxstyle="round", fc="w", ec="0.5", alpha=0.9),
+                            arrowprops=dict(arrowstyle="->", color='k'))
+        annot.set_visible(False)
+
+        def format_complex(c: complex) -> str:
+            real = round(c.real, 4)
+            imag = round(abs(c.imag), 4)
+            sign = "+" if c.imag >= 0 else "-"
+            return f"{real} {sign} {imag}j"
+
+        def hover(event):
+            if event.inaxes == ax:
+                best_dist, best_type, best_idx = float('inf'), None, -1
+                for i in range(len(self.zeta_pairs)):
+                    ds = np.hypot(event.xdata - s_reals[i], event.ydata - s_imags[i])
+                    if ds < best_dist:
+                        best_dist, best_type, best_idx = ds, 's', i
+                    dz = np.hypot(event.xdata - z_reals[i], event.ydata - z_imags[i])
+                    if dz < best_dist:
+                        best_dist, best_type, best_idx = dz, 'z', i
+
+                if best_dist < 0.2:
+                    s_val, z_val = self.zeta_pairs[best_idx]
+                    if best_type == 's':
+                        annot.xy = (s_reals[best_idx], s_imags[best_idx])
+                        annot.set_text(f"s = {format_complex(s_val)}")
+                    else:
+                        annot.xy = (z_reals[best_idx], z_imags[best_idx])
+                        annot.set_text(f"ζ({format_complex(s_val)}) = {format_complex(z_val)}")
+                    annot.set_visible(True)
+                else:
+                    annot.set_visible(False)
+                fig.canvas.draw_idle()
+            else:
+                annot.set_visible(False)
+                fig.canvas.draw_idle()
+
+        fig.canvas.mpl_connect("motion_notify_event", hover)
+        plt.tight_layout()
+        plt.show()
+
+    def plot_zeta_3d(self) -> None:
+        """Plots the Magnitude of the Zeta function in 3D Space."""
+        if not self.zeta_pairs:
+            return
+        
+        plt.style.use('seaborn-v0_8-muted')
+        fig = plt.figure(figsize=(12, 8))
+        ax = fig.add_subplot(111, projection='3d')
+        
+        s_reals = [p[0].real for p in self.zeta_pairs]
+        s_imags = [p[0].imag for p in self.zeta_pairs]
+        z_mags = [abs(p[1]) for p in self.zeta_pairs]
+        
+        scatter = ax.scatter(s_reals, s_imags, z_mags, 
+                            c=z_mags, cmap='viridis', 
+                            s=60, edgecolors='k', alpha=0.8)
+        
+        fig.colorbar(scatter, ax=ax, label=r'Magnitude $|\zeta(s)|$')
+        ax.set_title("3D Visualization: Magnitude of Riemann Zeta Function", 
+                    fontsize=14, fontweight='bold')
+        ax.set_xlabel("Real Part (Re s)", fontsize=12)
+        ax.set_ylabel("Imaginary Part (Im s)", fontsize=12)
+        ax.set_zlabel(r"$|\zeta(s)|$", fontsize=12)
+        ax.grid(True, linestyle='--', alpha=0.5)
+        ax.view_init(elev=30, azim=45)
+        
+        plt.tight_layout()
+        plt.show()
+
+    def show_about(self) -> None:
+        """Displays the information dialog about the application."""
+        about_text = (
+            "Pro Fibonacci, Prime & Zeta Visualizer\n"
+            "--------------------------------------------------\n\n"
+            "Fibonacci: Generates the sequence where each number is\n"
+            "the sum of the two preceding ones (0, 1, 1, 2, 3, 5...).\n\n"
+            "Primes: Generates a list of prime numbers using the Sieve\n"
+            "of Eratosthenes, which is efficient for large limits.\n\n"
+            "Riemann Zeta: Computes ζ(s) for any complex number s.\n"
+            "- Re(s) > 1: Calculated via standard Dirichlet series.\n"
+            "- 0 < Re(s) < 1: Calculated via Dirichlet Eta function.\n"
+            "- Re(s) <= 0: Calculated via the Functional Equation using\n"
+            "  a complex Lanczos approximation for the Gamma function.\n"
+            "- Trivial Zeros: Occur at s = -2, -4, -6... (Symmetry).\n"
+            "- Note: Only diverges at s = 1 (the simple pole).\n\n"
+            "--------------------------------------------------\n"
+            "Author: Praveen KN\n"
+            "This software is for education purpose only."
+        )
+        messagebox.showinfo("About", about_text)
 
 
 if __name__ == "__main__":
-    main()
+    root_window = tk.Tk()
+    app = FibPrimeApp(root_window)
+    root_window.mainloop()
+
